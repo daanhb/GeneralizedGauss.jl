@@ -154,7 +154,7 @@ function compute_principal_representation_lower(set, moments, w0, x0)
 end
 
 
-function compute_gauss_rule(set::FunctionSet)
+function compute_gauss_rules(set::FunctionSet)
     @assert iseven(length(set))
 
     n = length(set)
@@ -163,20 +163,28 @@ function compute_gauss_rule(set::FunctionSet)
     moments = compute_moments(set)
     T = eltype(set)
 
-    xk_all = Array(Array{T,1}, 0)
-    wk_all = Array(Array{T,1}, 0)
+    xk_upper = Array(Array{T,1}, 0)
+    wk_upper = Array(Array{T,1}, 0)
+    xk_lower = Array(Array{T,1}, 0)
+    wk_lower = Array(Array{T,1}, 0)
+    f_funs_upper = Array(Any, 0)
+    w_funs_upper = Array(Any, 0)
+    x_funs_upper = Array(Any, 0)
+    f_funs_lower = Array(Any, 0)
+    w_funs_lower = Array(Any, 0)
+    x_funs_lower = Array(Any, 0)
 
     wk,xk = compute_one_point_rule(set[1:2], moments[1:2])
-    push!(wk_all, wk)
-    push!(xk_all, xk)
+    xi_lower = zeros(T,l)
+    xi_upper = zeros(T,l-1)
+    xi_lower[1] = xk[1]
+
+    push!(wk_lower, wk)
+    push!(xk_lower, xk)
 
     if l == 1
-        return wk,xk
+        return wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
     end
-
-    xi_lower = zeros(T,l)
-    xi_upper = zeros(T,l)
-    xi_lower[1] = xk[1]
 
     bn = 16
     for k = 1:l-1
@@ -189,8 +197,13 @@ function compute_gauss_rule(set::FunctionSet)
         xi = xk[1]
         xi_upper[k] = xi
         println("Upper principal representation ", k, " : xi is ", xi)
-        push!(wk_all, wk)
-        push!(xk_all, xk)
+
+        # Store the results for posterity
+        push!(wk_upper, wk)
+        push!(xk_upper, xk)
+        push!(f_funs_upper, f_fun)
+        push!(w_funs_upper, w_funs)
+        push!(x_funs_upper, x_funs)
 
         f_fun, w_funs, x_funs = approximate_canonical_representation_lower(
             set[1:2*k+2], moments[1:2*k+2], wk, xk, bn)
@@ -201,8 +214,11 @@ function compute_gauss_rule(set::FunctionSet)
         xi = xk[1]
         println("Lower principal representation ", k+1, " : xi is ", xi)
         xi_lower[k+1] = xi
-        push!(wk_all, wk)
-        push!(xk_all, xk)
+        push!(wk_lower, wk)
+        push!(xk_lower, xk)
+        push!(f_funs_lower, f_fun)
+        push!(w_funs_lower, w_funs)
+        push!(x_funs_lower, x_funs)
 
         residual = abs(sum([wk[i]*set[2*k+2](xk[i]) for i=1:length(wk)]) - moments[2*k+2])
 
@@ -210,5 +226,11 @@ function compute_gauss_rule(set::FunctionSet)
             bn *= 2
         end
     end
+    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
+end
+
+function compute_gauss_rule(set::FunctionSet)
+    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper =
+        compute_gauss_rules(set)
     wk, xk
 end
