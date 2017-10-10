@@ -37,4 +37,3 @@ function exp_basis(n)
         ChebyshevBasis(n>>1+1, 0, 1) ⊕ Exp() * ChebyshevBasis(n>>1, 0, 1)
     end
 end
-

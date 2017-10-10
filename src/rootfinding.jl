@@ -25,18 +25,19 @@ end
 #####################
 
 "The abstract NonlinearSystem type represents a system of non-linear equations in n variables."
-abstract NonlinearSystem
+abstract type NonlinearSystem
+end
 
 # Default numeric type is Float64
 eltype{S <: NonlinearSystem}(::Type{S}) = Float64
 
 function residual(sys::NonlinearSystem, x)
-    result = Array(eltype(sys), length(sys))
+    result = Array{eltype(sys)}(length(sys))
     residual!(result, sys, x)
 end
 
 function jacobian(sys::NonlinearSystem, x)
-    J = Array(eltype(sys), size(sys))
+    J = Array{eltype(sys)}(size(sys))
     jacobian!(J, sys, x)
 end
 
@@ -52,8 +53,8 @@ Damped Newton iterations can be achieved by supplying damping parameter 0 < alph
 """
 function newton(sys::NonlinearSystem, x0; threshold = 1e-6, alpha = 1, maxiter = 100, maxstep = 1e5, verbose = false)
     n = length(x0)
-    S = Array(eltype(sys), n)
-    J = Array(eltype(sys), n, n)
+    S = Array{eltype(sys)}(n)
+    J = Array{eltype(sys)}(n, n)
 
     residual!(S, sys, x0)
     jacobian!(J, sys, x0)

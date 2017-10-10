@@ -30,7 +30,7 @@ immutable QuadRuleData{T,B,DB}
     moments ::  Array{T,1}
 end
 
-eltype{T,B,DB}(::QuadRuleData{T,B,DB}) = T
+eltype(::QuadRuleData{T,B,DB}) where {T,B,DB} = T
 
 function QuadRuleData(basis::FunctionSet, len::Int, moments = compute_moments(basis), dbasis = derivative(basis))
     T = eltype(moments)
@@ -50,9 +50,10 @@ moments(d::QuadRuleData) = d.moments
 
 
 "A type that describes the nonlinear equations of exactness of a quadrature rule, for use in Newton's method."
-abstract QuadRuleSystem{T} <: NonlinearSystem
+abstract type QuadRuleSystem{T} <: NonlinearSystem
+end
 
-eltype{T}(::QuadRuleSystem{T}) = T
+eltype(::QuadRuleSystem{T}) where {T} = T
 
 data(sys::QuadRuleSystem) = sys.data
 
@@ -121,7 +122,7 @@ immutable QuadRuleFixedPoints{T} <: QuadRuleSystem{T}
     "Indices of the free points."
     free_idxs   ::  Vector{Int}
 
-    function QuadRuleFixedPoints(data, fixed_idxs, fixed_pts)
+    function QuadRuleFixedPoints{T}(data, fixed_idxs, fixed_pts) where T
         P = length(fixed_idxs)
         @assert length(fixed_pts) == P
         @assert P > 0
@@ -134,7 +135,7 @@ immutable QuadRuleFixedPoints{T} <: QuadRuleSystem{T}
     end
 end
 
-QuadRuleFixedPoints{T}(data::QuadRuleData{T}, fixed_idxs, fixed_pts) =
+QuadRuleFixedPoints(data::QuadRuleData{T}, fixed_idxs, fixed_pts) where {T} =
     QuadRuleFixedPoints{T}(data, fixed_idxs, fixed_pts)
 
 "The number of fixed points in the quadrature rule."
