@@ -36,7 +36,7 @@ function compute_canonical_representation_upper(set, moments, xi, w0, x0)
 
     rule = CanonicalRepresentationOdd_K1(set, xi, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(eltype(set)))/100, verbose = false)
+        threshold = sqrt(eps(domaintype(set)))/100, verbose = false)
     w, x = newton_to_quad(rule, nx)
 end
 
@@ -64,7 +64,7 @@ function compute_many_canonical_representation_upper(set, moments, gw, gx, n,
 end
 
 function chebyshev_approximation(basis, vals)
-    A = approximation_operator(basis)
+    A = approximation_operator(span(basis))
     SetExpansion(basis, A*vals)
 end
 
@@ -89,7 +89,7 @@ end
 function compute_principal_representation_upper(set, moments, w0, x0)
     rule = UpperPrincipalEven(set, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(eltype(set)))/100, verbose = false)
+        threshold = sqrt(eps(rangetype(set)))/100, verbose = false)
     w, x = newton_to_quad(rule, nx)
 end
 
@@ -100,7 +100,7 @@ function compute_canonical_representation_lower(set, moments, xi, w0, x0)
 
     rule = CanonicalRepresentationEven_J1(set, xi, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(eltype(set)))/100, verbose = false, maxstep = 10)
+        threshold = sqrt(eps(rangetype(set)))/100, verbose = false, maxstep = 10)
     w, x = newton_to_quad(rule, nx)
 end
 
@@ -149,7 +149,7 @@ end
 function compute_principal_representation_lower(set, moments, w0, x0)
     rule = LowerPrincipalOdd(set, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(eltype(set)))/100, verbose = false)
+        threshold = sqrt(eps(rangetype(set)))/100, verbose = false)
     w, x = newton_to_quad(rule, nx)
 end
 
@@ -161,7 +161,7 @@ function compute_gauss_rules(set::FunctionSet)
     l = n >> 1
 
     moments = compute_moments(set)
-    T = eltype(set)
+    T = domaintype(set)
 
     xk_upper = Array{Array{T,1}}(0)
     wk_upper = Array{Array{T,1}}(0)

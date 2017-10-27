@@ -1,9 +1,6 @@
 # quadrule.jl
 
-function compute_moments(basis::FunctionSet)
-    T = eltype(basis)
-    T[moment(basis,i) for i in eachindex(basis)]
-end
+compute_moments(basis::FunctionSet) = [moment(basis,i) for i in eachindex(basis)]
 
 function apply_quad(w, x, f)
     z = w[1] * f(x[1])

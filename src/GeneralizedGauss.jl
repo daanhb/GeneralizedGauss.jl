@@ -8,6 +8,8 @@ using BasisFunctions
 
 import BasisFunctions: moment
 
+export compute_gauss_rule, compute_gauss_rules
+
 include("rootfinding.jl")
 
 include("sets.jl")
