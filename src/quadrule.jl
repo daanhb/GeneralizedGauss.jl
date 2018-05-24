@@ -1,6 +1,6 @@
 # quadrule.jl
 
-compute_moments(basis::FunctionSet) = [moment(basis,i) for i in eachindex(basis)]
+compute_moments(basis::Dictionary) = [moment(basis,i) for i in eachindex(basis)]
 
 function apply_quad(w, x, f)
     z = w[1] * f(x[1])
@@ -16,31 +16,24 @@ compute_weights(x, basis, B) = interpolation_matrix(basis, x)' \ B
 A container to collect information about a quadrature rule, mainly for use
 in types describing exactness equations.
 """
-immutable QuadRuleData{T,B,DB}
+immutable QuadRuleData{B <: Dictionary,T}
     "The basis for which the rule is exact."
     basis   ::  B
     "The length of the quadrature rule"
     len     ::  Int
-    "Derivative of the basis."
-    dbasis  ::  DB
     "Moments of the basis with respect to some measure."
-    moments ::  Array{T,1}
+    moments ::  Vector{T}
 end
 
-eltype(::QuadRuleData{T,B,DB}) where {T,B,DB} = T
+eltype(::QuadRuleData{B,T}) where {B,T} = T
 
-function QuadRuleData(basis::FunctionSet, len::Int, moments = compute_moments(basis), dbasis = derivative(basis))
-    T = eltype(moments)
-    B = typeof(basis)
-    DB = typeof(dbasis)
-    QuadRuleData{T,B,DB}(basis, len, dbasis, moments)
+function QuadRuleData(basis::Dictionary{S,T}, len::Int, moments = compute_moments(basis)) where {S,T}
+    QuadRuleData{typeof(basis),T}(basis, len, moments)
 end
 
 length(d::QuadRuleData) = d.len
 
 basis(d::QuadRuleData) = d.basis
-
-derivativebasis(d::QuadRuleData) = d.dbasis
 
 moments(d::QuadRuleData) = d.moments
 
@@ -54,7 +47,7 @@ eltype(::QuadRuleSystem{T}) where {T} = T
 
 data(sys::QuadRuleSystem) = sys.data
 
-for op in [:basis, :derivativebasis, :moments]
+for op in [:basis, :moments]
     @eval $op(sys::QuadRuleSystem) = $op(sys.data)
 end
 
@@ -81,7 +74,7 @@ end
 # Evaluate the Jacobian of the system of equations
 function jacobian!(J, sys::QuadRuleSystem, newton_x)
     w,x = newton_to_quad(sys, newton_x)
-    jacobian!(J, sys, w, x, basis(sys), derivativebasis(sys))
+    jacobian!(J, sys, w, x, basis(sys))
 end
 
 
@@ -100,8 +93,8 @@ end
 
 
 "System of equations for a quadrature rule where all points are free."
-immutable QuadRuleFreePoints{T} <: QuadRuleSystem{T}
-    data    ::  QuadRuleData{T}
+immutable QuadRuleFreePoints{B,T} <: QuadRuleSystem{T}
+    data    ::  QuadRuleData{B,T}
 end
 
 "The total number of degrees of freedom in the system."
@@ -109,9 +102,9 @@ dofs(rule::QuadRuleFreePoints) = 2*length(rule.data)
 
 
 "System of equations for a quadrature rule with some points fixed."
-immutable QuadRuleFixedPoints{T} <: QuadRuleSystem{T}
+immutable QuadRuleFixedPoints{B,T} <: QuadRuleSystem{T}
     "Data about the quadrature rule: basis, moments, etcetera."
-    data        ::  QuadRuleData{T}
+    data        ::  QuadRuleData{B,T}
     "Indices of the fixed points."
     fixed_idxs  ::  Vector{Int}
     "Values of the fixed points."
@@ -119,7 +112,7 @@ immutable QuadRuleFixedPoints{T} <: QuadRuleSystem{T}
     "Indices of the free points."
     free_idxs   ::  Vector{Int}
 
-    function QuadRuleFixedPoints{T}(data, fixed_idxs, fixed_pts) where T
+    function QuadRuleFixedPoints{B,T}(data, fixed_idxs, fixed_pts) where {B,T}
         P = length(fixed_idxs)
         @assert length(fixed_pts) == P
         @assert P > 0
@@ -132,8 +125,8 @@ immutable QuadRuleFixedPoints{T} <: QuadRuleSystem{T}
     end
 end
 
-QuadRuleFixedPoints(data::QuadRuleData{T}, fixed_idxs, fixed_pts) where {T} =
-    QuadRuleFixedPoints{T}(data, fixed_idxs, fixed_pts)
+QuadRuleFixedPoints(data::QuadRuleData{B,T}, fixed_idxs, fixed_pts) where {B,T} =
+    QuadRuleFixedPoints{B,T}(data, fixed_idxs, fixed_pts)
 
 "The number of fixed points in the quadrature rule."
 nbfixed(rule::QuadRuleFixedPoints) = length(rule.fixed_pts)
@@ -208,42 +201,42 @@ function quad_to_newton!(sys::QuadRuleFixedPoints, w, x, newton_x)
     newton_x
 end
 
-function jacobian!(J, sys::QuadRuleFreePoints, w, x, basis, dbasis)
+function jacobian!(J, sys::QuadRuleFreePoints, w, x, basis)
     l = length(w)
 
     # We are computing the derivative of \sum_{i=1}^l w_i ϕ_j(x_i) wrt w_i and x_i
     # - First the derivatives with respect to the weight w[i]
-    for (j,ϕ_j) in enumerate(basis)
+    for j in 1:length(basis)
         for i in 1:l
-            J[j,i] = ϕ_j(x[i])
+            J[j,i] = eval_element(basis, j, x[i])
         end
     end
     # - Then the weight times the derivatives of the basis functions
-    for (j,dϕ_j) in enumerate(dbasis)
+    for j in 1:length(basis)
         for i in 1:l
-            J[j,l+i] = w[i] * dϕ_j(x[i])
+            J[j,l+i] = w[i] * eval_element_derivative(basis, j, x[i])
         end
     end
     J
 end
 
 
-function jacobian!(J, sys::QuadRuleFixedPoints, w, x, basis, dbasis)
+function jacobian!(J, sys::QuadRuleFixedPoints, w, x, basis)
     l = length(w)
     P = nbfixed(sys)
 
     # We are computing the derivative of \sum_{i=1}^l w_i ϕ_j(x_i) wrt w_i and x_i
     # as before, but now some of the x_i's are fixed and we have to skip them.
     # - First the derivatives with respect to the weight w[i]: same as before
-    for (j,ϕ_j) in enumerate(basis)
+    for j in 1:length(basis)
         for i in 1:l
-            J[j,i] = ϕ_j(x[i])
+            J[j,i] = eval_element(basis, j, x[i])
         end
     end
     # - Then the weight times the derivatives of the basis functions
-    for (j,dϕ_j) in enumerate(dbasis)
+    for j in 1:length(basis)
         for (k,i) in enumerate(sys.free_idxs)
-            J[j,l+k] = w[i]*dϕ_j(x[i])
+            J[j,l+k] = w[i] * eval_element_derivative(basis, j, x[i])
         end
     end
     J

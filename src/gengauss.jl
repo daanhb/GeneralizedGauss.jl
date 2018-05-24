@@ -4,14 +4,14 @@ Fk(w, x, u2k, c2k) = apply_quad(w, x, u2k) - c2k
 
 Gk(w, x, u2kp1, c2kp1) = apply_quad(w, x, u2kp1) - c2kp1
 
-function leastsquares_approximate(set::FunctionSet, points, values)
+function leastsquares_approximate(set::Dictionary, points, values)
     @assert length(points) == length(values)
 
     M = length(points)
     N = min(length(values), max(6,round(Int, sqrt(M))))
     basis = rescale(resize(set, N), minimum(points), maximum(points))
     A = BasisFunctions.evaluation_matrix(basis, points)
-    SetExpansion(basis, A\values)
+    Expansion(basis, A\values)
 end
 
 
@@ -64,8 +64,8 @@ function compute_many_canonical_representation_upper(set, moments, gw, gx, n,
 end
 
 function chebyshev_approximation(basis, vals)
-    A = approximation_operator(span(basis))
-    SetExpansion(basis, A*vals)
+    A = approximation_operator(Span(basis))
+    Expansion(basis, A*vals)
 end
 
 function approximate_canonical_representation_upper(set, moments, gw, gx, n)
@@ -89,7 +89,7 @@ end
 function compute_principal_representation_upper(set, moments, w0, x0)
     rule = UpperPrincipalEven(set, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(rangetype(set)))/100, verbose = false)
+        threshold = sqrt(eps(codomaintype(set)))/100, verbose = false)
     w, x = newton_to_quad(rule, nx)
 end
 
@@ -100,7 +100,7 @@ function compute_canonical_representation_lower(set, moments, xi, w0, x0)
 
     rule = CanonicalRepresentationEven_J1(set, xi, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(rangetype(set)))/100, verbose = false, maxstep = 10)
+        threshold = sqrt(eps(codomaintype(set)))/100, verbose = false, maxstep = 10)
     w, x = newton_to_quad(rule, nx)
 end
 
@@ -149,18 +149,17 @@ end
 function compute_principal_representation_lower(set, moments, w0, x0)
     rule = LowerPrincipalOdd(set, moments)
     nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = sqrt(eps(rangetype(set)))/100, verbose = false)
+        threshold = sqrt(eps(codomaintype(set)))/100, verbose = false)
     w, x = newton_to_quad(rule, nx)
 end
 
 
-function compute_gauss_rules(set::FunctionSet)
+function compute_gauss_rules(set::Dictionary, moments = compute_moments(set); verbose = true)
     @assert iseven(length(set))
 
     n = length(set)
     l = n >> 1
 
-    moments = compute_moments(set)
     T = domaintype(set)
 
     xk_upper = Array{Array{T,1}}(0)
@@ -196,7 +195,9 @@ function compute_gauss_rules(set::FunctionSet)
         wk, xk = compute_principal_representation_upper(set[1:2*k+1], moments[1:2*k+1], w0, x0)
         xi = xk[1]
         xi_upper[k] = xi
-        println("Upper principal representation ", k, " : xi is ", xi)
+        if verbose
+            println("Upper principal representation ", k, " : xi is ", xi)
+        end
 
         # Store the results for posterity
         push!(wk_upper, wk)
@@ -212,8 +213,11 @@ function compute_gauss_rules(set::FunctionSet)
         x0 = T[x_funs[k](xi0) for k in 1:length(x_funs)]
         wk, xk = compute_principal_representation_lower(set[1:2*k+2], moments[1:2*k+2], w0, x0)
         xi = xk[1]
-        println("Lower principal representation ", k+1, " : xi is ", xi)
         xi_lower[k+1] = xi
+        if verbose
+            println("Lower principal representation ", k+1, " : xi is ", xi)
+        end
+
         push!(wk_lower, wk)
         push!(xk_lower, xk)
         push!(f_funs_lower, f_fun)
@@ -229,8 +233,8 @@ function compute_gauss_rules(set::FunctionSet)
     wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
 end
 
-function compute_gauss_rule(set::FunctionSet)
+function compute_gauss_rule(set::Dictionary, moments = compute_moments(set); options...)
     wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper =
-        compute_gauss_rules(set)
+        compute_gauss_rules(set, moments; options...)
     wk, xk
 end

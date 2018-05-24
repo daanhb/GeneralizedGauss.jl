@@ -1,7 +1,7 @@
 # representations.jl
 
 "Generate the non-linear system for a lower principal representation for odd n."
-function LowerPrincipalOdd(s::FunctionSet, moments = compute_moments(s))
+function LowerPrincipalOdd(s::Dictionary, moments = compute_moments(s))
     n = length(s) - 1
     @assert isodd(n)
     l = (n+1) >> 1
@@ -9,7 +9,7 @@ function LowerPrincipalOdd(s::FunctionSet, moments = compute_moments(s))
 end
 
 "Generate the non-linear system for an upper principal representation for odd n."
-function UpperPrincipalOdd(s::FunctionSet, moments = compute_moments(s))
+function UpperPrincipalOdd(s::Dictionary, moments = compute_moments(s))
     n = length(s) - 1
     @assert isodd(n)
     l = ((n+1) >> 1) + 1
@@ -17,7 +17,7 @@ function UpperPrincipalOdd(s::FunctionSet, moments = compute_moments(s))
 end
 
 "Generate the non-linear system for a lower principal representation for even n."
-function LowerPrincipalEven(s::FunctionSet, moments = compute_moments(s))
+function LowerPrincipalEven(s::Dictionary, moments = compute_moments(s))
     n = length(s) - 1
     @assert iseven(n)
     l = (n >> 1) + 1
@@ -25,7 +25,7 @@ function LowerPrincipalEven(s::FunctionSet, moments = compute_moments(s))
 end
 
 "Generate the non-linear system for an upper principal representation for even n."
-function UpperPrincipalEven(s::FunctionSet, moments = compute_moments(s))
+function UpperPrincipalEven(s::Dictionary, moments = compute_moments(s))
     n = length(s) - 1
     @assert iseven(n)
     l = (n >> 1) + 1
@@ -33,7 +33,7 @@ function UpperPrincipalEven(s::FunctionSet, moments = compute_moments(s))
 end
 
 # The fixed root is in K1 = [a,t1].
-function CanonicalRepresentationOdd_K1(s::FunctionSet, xstar, moments = compute_moments(s))
+function CanonicalRepresentationOdd_K1(s::Dictionary, xstar, moments = compute_moments(s))
     n = length(s) - 1
     @assert isodd(n)
     l = ((n+1) >> 1) + 1
@@ -41,7 +41,7 @@ function CanonicalRepresentationOdd_K1(s::FunctionSet, xstar, moments = compute_
 end
 
 # The fixed root is in J1 = [t1,s2].
-function CanonicalRepresentationOdd_J1(s::FunctionSet, xstar, moments = compute_moments(s))
+function CanonicalRepresentationOdd_J1(s::Dictionary, xstar, moments = compute_moments(s))
     n = length(s) - 1
     @assert isodd(n)
     l = ((n+1) >> 1) + 1
@@ -49,7 +49,7 @@ function CanonicalRepresentationOdd_J1(s::FunctionSet, xstar, moments = compute_
 end
 
 # The fixed root is in J1 = [a,s1].
-function CanonicalRepresentationEven_J1(s::FunctionSet, xstar, moments = compute_moments(s))
+function CanonicalRepresentationEven_J1(s::Dictionary, xstar, moments = compute_moments(s))
     n = length(s) - 1
     @assert iseven(n)
     l = (n >> 1) + 1
@@ -57,7 +57,7 @@ function CanonicalRepresentationEven_J1(s::FunctionSet, xstar, moments = compute
 end
 
 # The fixed root is in K1 = [s1,t2].
-function CanonicalRepresentationEven_K1(s::FunctionSet, xstar, moments = compute_moments(s))
+function CanonicalRepresentationEven_K1(s::Dictionary, xstar, moments = compute_moments(s))
     n = length(s) - 1
     @assert iseven(n)
     l = (n >> 1) + 2

@@ -29,7 +29,7 @@ abstract type NonlinearSystem
 end
 
 # Default numeric type is Float64
-eltype{S <: NonlinearSystem}(::Type{S}) = Float64
+# eltype(::Type{S}) where {S <: NonlinearSystem} = Float64
 
 function residual(sys::NonlinearSystem, x)
     result = Array{eltype(sys)}(length(sys))
