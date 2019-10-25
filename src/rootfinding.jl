@@ -1,6 +1,5 @@
-# rootfinding.jl
 
-function bisection(fun, a, b, threshold = sqrt(eps(eltype(fun)))/100, maxiter = 100)
+function bisection(fun, a, b; threshold = 1e-10, maxiter = 100)
     root = (a+b)/2
     iter = 0
     while (abs(fun(root)) > threshold) && (iter < maxiter)
@@ -53,8 +52,8 @@ Damped Newton iterations can be achieved by supplying damping parameter 0 < alph
 """
 function newton(sys::NonlinearSystem, x0; threshold = 1e-6, alpha = 1, maxiter = 100, maxstep = 1e5, verbose = false)
     n = length(x0)
-    S = Array{eltype(sys)}(n)
-    J = Array{eltype(sys)}(n, n)
+    S = Array{eltype(sys)}(undef, n)
+    J = Array{eltype(sys)}(undef, n, n)
 
     residual!(S, sys, x0)
     jacobian!(J, sys, x0)
@@ -94,7 +93,7 @@ function newton_with_restart(args...; maxstep = 1e5, maxiter = 100, options...)
     local nx,iter,normx
     nb_decreased = 0
     try
-        nx,iter,normx = newton(args...; maxstep = maxstep, options...)
+    nx,iter,normx = newton(args...; maxstep = maxstep, options...)
     catch e
         print("Error thrown by newton: ")
         println(e)

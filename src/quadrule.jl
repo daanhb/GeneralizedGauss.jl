@@ -1,4 +1,3 @@
-# quadrule.jl
 
 compute_moments(basis::Dictionary) = [moment(basis,i) for i in eachindex(basis)]
 
@@ -16,7 +15,7 @@ compute_weights(x, basis, B) = interpolation_matrix(basis, x)' \ B
 A container to collect information about a quadrature rule, mainly for use
 in types describing exactness equations.
 """
-immutable QuadRuleData{B <: Dictionary,T}
+struct QuadRuleData{B <: Dictionary,T}
     "The basis for which the rule is exact."
     basis   ::  B
     "The length of the quadrature rule"
@@ -40,8 +39,7 @@ moments(d::QuadRuleData) = d.moments
 
 
 "A type that describes the nonlinear equations of exactness of a quadrature rule, for use in Newton's method."
-abstract type QuadRuleSystem{T} <: NonlinearSystem
-end
+abstract type QuadRuleSystem{T} <: NonlinearSystem end
 
 eltype(::QuadRuleSystem{T}) where {T} = T
 
@@ -93,7 +91,7 @@ end
 
 
 "System of equations for a quadrature rule where all points are free."
-immutable QuadRuleFreePoints{B,T} <: QuadRuleSystem{T}
+struct QuadRuleFreePoints{B,T} <: QuadRuleSystem{T}
     data    ::  QuadRuleData{B,T}
 end
 
@@ -102,7 +100,7 @@ dofs(rule::QuadRuleFreePoints) = 2*length(rule.data)
 
 
 "System of equations for a quadrature rule with some points fixed."
-immutable QuadRuleFixedPoints{B,T} <: QuadRuleSystem{T}
+struct QuadRuleFixedPoints{B,T} <: QuadRuleSystem{T}
     "Data about the quadrature rule: basis, moments, etcetera."
     data        ::  QuadRuleData{B,T}
     "Indices of the fixed points."
