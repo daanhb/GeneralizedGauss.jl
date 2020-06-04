@@ -22,17 +22,13 @@ function oscillatory_basis_cos(omega, n)
 end
 
 function log_basis(n)
-    if iseven(n)
-        ChebyshevT(n>>1, 0, 1) ⊕ Log() * ChebyshevT(n>>1, 0, 1)
-    else
-        ChebyshevT(n>>1+1, 0, 1) ⊕ Log() * ChebyshevT(n>>1, 0, 1)
-    end
+    b1 = Chebyhev(n>>1) → 0..1
+    b2 = Chebyhev(n>>1+1) → 0..1
+    iseven(n) ? b1 ⊕ Log() * b1 : b2 ⊕ Log() * b1
 end
 
 function exp_basis(n)
-    if iseven(n)
-        ChebyshevT(n>>1, 0, 1) ⊕ Exp() * ChebyshevT(n>>1, 0, 1)
-    else
-        ChebyshevT(n>>1+1, 0, 1) ⊕ Exp() * ChebyshevT(n>>1, 0, 1)
-    end
+    b1 = Chebyhev(n>>1) → 0..1
+    b2 = Chebyhev(n>>1+1) → 0..1
+    iseven(n) ? b1 ⊕ Exp() * b1 : b2 ⊕ Exp() * b1
 end

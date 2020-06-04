@@ -22,16 +22,30 @@ default_threshold(::Type{BigFloat}) = big(1e-28)
 supportleft(dict) = leftendpoint(support(dict))
 supportright(dict) = rightendpoint(support(dict))
 
-function compute_one_point_rule(dict, moments)
+function compute_one_point_rule(dict, moments; verbose = false)
     @assert length(dict) == 2
     @assert length(moments) == 2
 
     x0 = 1/2 * (supportleft(dict) + supportright(dict))
-    w0 = supportright(dict) - supportleft(dict)
-    sys = LowerPrincipalOdd(dict, moments)
-    result = newton(sys, quad_to_newton(sys, w0, x0))
-    w, x = newton_to_quad(sys, result[1])
+    w0 = moments[1] / eval_element(dict, 1, x0)
+    w, x = compute_principal_representation_lower(dict, moments, w0, x0)
+    # w0 = supportright(dict) - supportleft(dict)
+    # w, x, converged = compute_one_point_rule(dict, moments, x0, w0,
+    #     maxiter=maxiter, verbose=verbose)
+    # if !converged
+    #     x0 = 1/2 * (supportleft(dict) + supportright(dict))
+    #     w0 = supportright(dict) - supportleft(dict)
+    # end
 end
+
+# function compute_one_point_rule(dict, moments, x0, w0; maxiter, verbose)
+#     sys = LowerPrincipalOdd(dict, moments)
+#     result = newton(sys, quad_to_newton(sys, w0, x0),
+#         maxiter=maxiter, verbose=verbose)
+#     iterations = result[2]
+#     w, x = newton_to_quad(sys, result[1])
+#     w, x, iterations<maxiter
+# end
 
 
 function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
@@ -80,7 +94,7 @@ function approximate_canonical_representation_upper(dict, moments, gw, gx, n)
     @assert length(gw) == l
     @assert length(gx) == l
 
-    basis = ChebyshevT(n, supportleft(dict), gx[1])
+    basis = ChebyshevT(n) → supportleft(dict)..gx[1]
     pts = interpolation_grid(basis)
     w,x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], gw, gx, n, pts)
     T = eltype(w)
@@ -140,7 +154,7 @@ function approximate_canonical_representation_lower(dict, moments, gw, gx, n)
     @assert length(gw) == l
     @assert length(gx) == l
 
-    basis = ChebyshevT(n, supportleft(dict), gx[1])
+    basis = ChebyshevT(n) → supportleft(dict)..gx[1]
     pts = interpolation_grid(basis)
     w,x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], gw, gx, n, pts)
     T = eltype(w)
@@ -178,7 +192,9 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
     w_funs_lower = Array{Any}(undef,0)
     x_funs_lower = Array{Any}(undef,0)
 
-    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2])
+    verbose && println("Computing initial one point rule")
+    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2], verbose=verbose)
+    verbose && println("One point quadrature rule is: ", xk, ", ", wk)
     xi_lower = zeros(T,l)
     xi_upper = zeros(T,l-1)
     xi_lower[1] = xk[1]

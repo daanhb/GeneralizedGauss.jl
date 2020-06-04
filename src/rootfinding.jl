@@ -89,7 +89,7 @@ end
 
 
 "Invoke Newton but restart with smaller maximal step size if an error is thrown."
-function newton_with_restart(args...; maxstep = 1e5, maxiter = 100, options...)
+function newton_with_restart(args...; maxstep = 1e5, maxiter = 100, verbose = false, options...)
     local nx,iter,normx
     nb_decreased = 0
     try
@@ -100,10 +100,10 @@ function newton_with_restart(args...; maxstep = 1e5, maxiter = 100, options...)
         iter = maxiter
     end
     while iter == maxiter
-        println("Decreasing step size.")
+        verbose && println("Decreasing step size.")
         maxstep /= 2
         try
-            nx,iter,normx = newton(args...; maxstep = maxstep, options...)
+            nx,iter,normx = newton(args...; maxstep = maxstep, verbose=verbose, options...)
         catch e
             print("Error thrown by newton: ")
             println(e)
