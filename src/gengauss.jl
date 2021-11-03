@@ -64,12 +64,13 @@ function compute_many_canonical_representation_upper(dict, moments, gw, gx, n,
     pts = linspace(supportleft(dict), gx[1], n))
 
     l = length(dict) >> 1
-    w = zeros(l+1,n)
-    x = zeros(l+1,n)
+    T = eltype(gw)
+    w = zeros(T,l+1,n)
+    x = zeros(T,l+1,n)
     for i = n:-1:1
         xi = pts[i]
         if i == n
-            w0 = [gw; 0.0]
+            w0 = [gw; zero(T)]
             x0 = [gx; supportright(dict)]
         else
             w0 = w[:,i+1]
@@ -83,7 +84,7 @@ function compute_many_canonical_representation_upper(dict, moments, gw, gx, n,
 end
 
 function chebyshev_approximation(basis, vals)
-    A = approximation_operator(basis)
+    A = approximation(basis)
     Expansion(basis, A*vals)
 end
 
@@ -94,7 +95,11 @@ function approximate_canonical_representation_upper(dict, moments, gw, gx, n)
     @assert length(gw) == l
     @assert length(gx) == l
 
-    basis = ChebyshevT(n) → supportleft(dict)..gx[1]
+    a = supportleft(dict)
+    b = gx[1]
+    a1 = 9a/10+b/10
+    basis = ChebyshevT(n) → a1..b
+    # basis = ChebyshevT(n) → supportleft(dict)..gx[1]
     pts = interpolation_grid(basis)
     w,x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], gw, gx, n, pts)
     T = eltype(w)
@@ -127,8 +132,9 @@ function compute_many_canonical_representation_lower(dict, moments, gw, gx, n,
     pts = linspace(supportleft(dict), gx[1], n))
 
     l = (length(dict)+1) >> 1
-    w = zeros(l,n)
-    x = zeros(l,n)
+    T = eltype(gw)
+    w = zeros(T,l,n)
+    x = zeros(T,l,n)
     w[:,n] = gw
     x[:,n] = gx
     for i = n:-1:1
@@ -154,7 +160,11 @@ function approximate_canonical_representation_lower(dict, moments, gw, gx, n)
     @assert length(gw) == l
     @assert length(gx) == l
 
-    basis = ChebyshevT(n) → supportleft(dict)..gx[1]
+    a = supportleft(dict)
+    b = gx[1]
+    a1 = 9a/10+b/10
+    basis = ChebyshevT(n) → a1..b
+    # basis = ChebyshevT(n) → supportleft(dict)..gx[1]
     pts = interpolation_grid(basis)
     w,x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], gw, gx, n, pts)
     T = eltype(w)
@@ -206,7 +216,7 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
         return wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
     end
 
-    bn = 16
+    bn = 32
     for k = 1:l-1
         f_fun, w_funs, x_funs = approximate_canonical_representation_upper(
             dict[1:2*k+1], moments[1:2*k+1], wk, xk, bn)
@@ -244,10 +254,11 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
         push!(x_funs_lower, x_funs)
 
         residual = abs(sum([wk[i]*dict[2*k+2](xk[i]) for i=1:length(wk)]) - moments[2*k+2])
+        # verbose && @show residual
 
-        if f_fun.coefficients[end] > max(default_threshold(T), 2*residual)
-            verbose && println("Increasing bn parameter")
+        if f_fun.coefficients[end] > 1e-10
             bn *= 2
+            verbose && println("Increasing bn parameter to $(bn)")
         end
     end
     wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
