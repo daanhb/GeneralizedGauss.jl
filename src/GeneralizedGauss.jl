@@ -1,12 +1,12 @@
 module GeneralizedGauss
 
-using BasisFunctions, LinearAlgebra
+using BasisFunctions, LinearAlgebra, NLsolve
+
 import BasisFunctions: moment
 
 export compute_moments,
-    compute_gauss_rule, compute_gauss_rules,
-    oscillatory_basis_exp, oscillatory_basis_cos, log_basis,
-    jacobi_matrix, newton
+    compute_gauss_rule,
+    compute_gauss_rules
 
 import Base:
     eltype,

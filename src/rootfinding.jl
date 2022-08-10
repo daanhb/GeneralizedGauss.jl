@@ -93,7 +93,7 @@ function newton_with_restart(args...; maxstep = 1e5, maxiter = 100, verbose = fa
     local nx,iter,normx
     nb_decreased = 0
     try
-    nx,iter,normx = newton(args...; maxstep = maxstep, options...)
+        nx,iter,normx = newton(args...; maxstep = maxstep, options...)
     catch e
         print("Error thrown by newton: ")
         println(e)
@@ -110,7 +110,7 @@ function newton_with_restart(args...; maxstep = 1e5, maxiter = 100, verbose = fa
             iter = maxiter
         end
         nb_decreased += 1
-        if nb_decreased > 20
+        if nb_decreased > 50
             error("Too many step decreases in newton_with_restart. Aborting.")
         end
     end

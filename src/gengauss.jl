@@ -29,23 +29,7 @@ function compute_one_point_rule(dict, moments; verbose = false)
     x0 = 1/2 * (supportleft(dict) + supportright(dict))
     w0 = moments[1] / eval_element(dict, 1, x0)
     w, x = compute_principal_representation_lower(dict, moments, w0, x0)
-    # w0 = supportright(dict) - supportleft(dict)
-    # w, x, converged = compute_one_point_rule(dict, moments, x0, w0,
-    #     maxiter=maxiter, verbose=verbose)
-    # if !converged
-    #     x0 = 1/2 * (supportleft(dict) + supportright(dict))
-    #     w0 = supportright(dict) - supportleft(dict)
-    # end
 end
-
-# function compute_one_point_rule(dict, moments, x0, w0; maxiter, verbose)
-#     sys = LowerPrincipalOdd(dict, moments)
-#     result = newton(sys, quad_to_newton(sys, w0, x0),
-#         maxiter=maxiter, verbose=verbose)
-#     iterations = result[2]
-#     w, x = newton_to_quad(sys, result[1])
-#     w, x, iterations<maxiter
-# end
 
 
 function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
@@ -54,9 +38,17 @@ function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
     @assert length(w0) == (length(dict)>>1)+1
 
     rule = CanonicalRepresentationOdd_K1(dict, xi, moments)
-    nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = default_threshold(dict), verbose = false)
-    w, x = newton_to_quad(rule, nx)
+
+    x_init = quad_to_newton(rule, w0, x0)
+    F!(Fx, x) = residual!(Fx, rule, x)
+    J!(Jx, x) = jacobian!(Jx, rule, x)
+    r = nlsolve(F!, J!, x_init)
+    @assert converged(r)
+    w, x = newton_to_quad(rule, r.zero)
+
+    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
+    #     threshold = default_threshold(dict), verbose = false)
+    # w, x = newton_to_quad(rule, nx)
 end
 
 
@@ -112,9 +104,17 @@ end
 
 function compute_principal_representation_upper(dict, moments, w0, x0)
     rule = UpperPrincipalEven(dict, moments)
-    nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = default_threshold(dict), verbose = false)
-    w, x = newton_to_quad(rule, nx)
+
+    x_init = quad_to_newton(rule, w0, x0)
+    F!(Fx, x) = residual!(Fx, rule, x)
+    J!(Jx, x) = jacobian!(Jx, rule, x)
+    r = nlsolve(F!, J!, x_init)
+    @assert converged(r)
+    w, x = newton_to_quad(rule, r.zero)
+
+    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
+    #     threshold = default_threshold(dict), verbose = false)
+    # w, x = newton_to_quad(rule, nx)
 end
 
 function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
@@ -123,9 +123,17 @@ function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
     @assert length(w0) == (length(dict)+1)>>1
 
     rule = CanonicalRepresentationEven_J1(dict, xi, moments)
-    nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = default_threshold(dict), verbose = false, maxstep = 10)
-    w, x = newton_to_quad(rule, nx)
+
+    x_init = quad_to_newton(rule, w0, x0)
+    F!(Fx, x) = residual!(Fx, rule, x)
+    J!(Jx, x) = jacobian!(Jx, rule, x)
+    r = nlsolve(F!, J!, x_init)
+    @assert converged(r)
+    w, x = newton_to_quad(rule, r.zero)
+
+    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
+    #     threshold = default_threshold(dict), verbose = false, maxstep = 10)
+    # w, x = newton_to_quad(rule, nx)
 end
 
 function compute_many_canonical_representation_lower(dict, moments, gw, gx, n,
@@ -162,8 +170,9 @@ function approximate_canonical_representation_lower(dict, moments, gw, gx, n)
 
     a = supportleft(dict)
     b = gx[1]
-    a1 = 9a/10+b/10
-    basis = ChebyshevT(n) → a1..b
+    # a1 = 9a/10+b/10
+    # basis = ChebyshevT(n) → a1..b
+    basis = ChebyshevT(n) → a..b
     # basis = ChebyshevT(n) → supportleft(dict)..gx[1]
     pts = interpolation_grid(basis)
     w,x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], gw, gx, n, pts)
@@ -177,9 +186,17 @@ end
 
 function compute_principal_representation_lower(dict, moments, w0, x0)
     rule = LowerPrincipalOdd(dict, moments)
-    nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-        threshold = default_threshold(dict), verbose = false)
-    w, x = newton_to_quad(rule, nx)
+
+    x_init = quad_to_newton(rule, w0, x0)
+    F!(Fx, x) = residual!(Fx, rule, x)
+    J!(Jx, x) = jacobian!(Jx, rule, x)
+    r = nlsolve(F!, J!, x_init)
+    @assert converged(r)
+    w, x = newton_to_quad(rule, r.zero)
+
+    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
+    #     threshold = default_threshold(dict), verbose = false)
+    # w, x = newton_to_quad(rule, nx)
 end
 
 
@@ -203,7 +220,7 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
     x_funs_lower = Array{Any}(undef,0)
 
     verbose && println("Computing initial one point rule")
-    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2], verbose=verbose)
+    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2]; verbose)
     verbose && println("One point quadrature rule is: ", xk, ", ", wk)
     xi_lower = zeros(T,l)
     xi_upper = zeros(T,l-1)
