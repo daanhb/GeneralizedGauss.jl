@@ -13,16 +13,8 @@ import Base:
     length,
     size
 
-
-
-include("rootfinding.jl")
-
-include("sets.jl")
-
 include("quadrule.jl")
-
 include("representations.jl")
-
 include("gengauss.jl")
 
 end # module

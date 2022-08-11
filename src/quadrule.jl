@@ -1,13 +1,7 @@
 
 compute_moments(basis::Dictionary) = [moment(basis,i) for i in eachindex(basis)]
 
-function apply_quad(w, x, f)
-    z = w[1] * f(x[1])
-    for i in 2:length(w)
-        z += w[i] * f(x[i])
-    end
-    z
-end
+apply_quad(w, x, f) = sum(w[k]*f(x[k]) for k in 1:length(w))
 
 compute_weights(x, basis, B) = interpolation_matrix(basis, x)' \ B
 
@@ -36,6 +30,23 @@ basis(d::QuadRuleData) = d.basis
 
 moments(d::QuadRuleData) = d.moments
 
+
+
+"""
+The abstract NonlinearSystem type represents a system of non-linear
+equations in n variables.
+"""
+abstract type NonlinearSystem end
+
+function residual(sys::NonlinearSystem, x)
+    result = Array{eltype(sys)}(length(sys))
+    residual!(result, sys, x)
+end
+
+function jacobian(sys::NonlinearSystem, x)
+    J = Array{eltype(sys)}(size(sys))
+    jacobian!(J, sys, x)
+end
 
 
 "A type that describes the nonlinear equations of exactness of a quadrature rule, for use in Newton's method."

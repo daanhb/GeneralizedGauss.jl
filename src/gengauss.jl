@@ -1,6 +1,5 @@
 
 Fk(w, x, u2k, c2k) = apply_quad(w, x, u2k) - c2k
-
 Gk(w, x, u2kp1, c2kp1) = apply_quad(w, x, u2kp1) - c2kp1
 
 function leastsquares_approximate(dict::Dictionary, points, values)
@@ -16,7 +15,7 @@ end
 default_threshold(dict::Dictionary) = default_threshold(codomaintype(dict))
 
 default_threshold(::Type{T}) where {T <: AbstractFloat} = sqrt(eps(T))/100
-default_threshold(::Type{BigFloat}) = big(1e-28)
+default_threshold(::Type{BigFloat}) = big(1e-20)
 
 
 supportleft(dict) = leftendpoint(support(dict))
@@ -28,7 +27,9 @@ function compute_one_point_rule(dict, moments; verbose = false)
 
     x0 = 1/2 * (supportleft(dict) + supportright(dict))
     w0 = moments[1] / eval_element(dict, 1, x0)
-    w, x = compute_principal_representation_lower(dict, moments, w0, x0)
+    converged, w, x = compute_principal_representation_lower(dict, moments, w0, x0)
+    @assert converged
+    w, x
 end
 
 
@@ -38,41 +39,44 @@ function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
     @assert length(w0) == (length(dict)>>1)+1
 
     rule = CanonicalRepresentationOdd_K1(dict, xi, moments)
-
     x_init = quad_to_newton(rule, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
-    r = nlsolve(F!, J!, x_init)
-    @assert converged(r)
-    w, x = newton_to_quad(rule, r.zero)
-
-    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-    #     threshold = default_threshold(dict), verbose = false)
-    # w, x = newton_to_quad(rule, nx)
+    try
+        r = nlsolve(F!, J!, x_init)
+        w, x = newton_to_quad(rule, r.zero)
+        converged(r), w, x
+    catch e
+        println("ERROR THROWN at $(xi) in computation of upper canonical")
+        @show e
+        false, w0, x0
+    end
 end
 
 
-function compute_many_canonical_representation_upper(dict, moments, gw, gx, n,
-    pts = linspace(supportleft(dict), gx[1], n))
+function compute_many_canonical_representation_upper(dict, moments, w0, x0, pts; verbose=false)
+    local converged
 
     l = length(dict) >> 1
-    T = eltype(gw)
+    n = length(pts)
+    T = eltype(w0)
     w = zeros(T,l+1,n)
     x = zeros(T,l+1,n)
     for i = n:-1:1
         xi = pts[i]
-        if i == n
-            w0 = [gw; zero(T)]
-            x0 = [gx; supportright(dict)]
-        else
+        if i < n
             w0 = w[:,i+1]
             x0 = x[:,i+1]
         end
-        w1,x1 = compute_canonical_representation_upper(dict, moments, xi, w0, x0)
+        converged, w1, x1 = compute_canonical_representation_upper(dict, moments, xi, w0, x0)
+        if !converged
+            verbose && println("Many upper canonical: not converged for $(xi)")
+            break
+        end
         w[:,i] = w1
         x[:,i] = x1
     end
-    w,x
+    converged, w, x
 end
 
 function chebyshev_approximation(basis, vals)
@@ -80,41 +84,81 @@ function chebyshev_approximation(basis, vals)
     Expansion(basis, A*vals)
 end
 
-function approximate_canonical_representation_upper(dict, moments, gw, gx, n)
+function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0; verbose=false)
     @assert isodd(length(dict))
     @assert length(dict) == length(moments)
     l = (length(dict)-1) >> 1
-    @assert length(gw) == l
-    @assert length(gx) == l
+    @assert length(w0) == l+1
+    @assert length(x0) == l+1
 
-    a = supportleft(dict)
-    b = gx[1]
-    a1 = 9a/10+b/10
-    basis = ChebyshevT(n) → a1..b
-    # basis = ChebyshevT(n) → supportleft(dict)..gx[1]
-    pts = interpolation_grid(basis)
-    w,x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], gw, gx, n, pts)
-    T = eltype(w)
-    Fvals = T[Fk(w[:,i],x[:,i],dict[2*l+1], moments[2*l+1]) for i in 1:size(w,2)]
-    F_fun = chebyshev_approximation(basis, Fvals)
-    w_funs = [chebyshev_approximation(basis, w[i,:]') for i in 1:size(w,1)]
-    x_funs = [chebyshev_approximation(basis, x[i,:]') for i in 1:size(x,1)]
-    F_fun, w_funs, x_funs
+    verbose && println("Estimating upper canonical representation near $(b)")
+    n = 8
+    estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, n; verbose)
+end
+
+function interpolate_starting_values(a, b, p, w_left, x_left, w_right, x_right)
+    θ = (p-a)/(b-a)
+    w0 = w_left + θ * (w_right-w_left)
+    x0 = x_left + θ * (x_right-x_left)
+    w0, x0
+end
+
+function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, n; verbose=false)
+    @assert n <= 1024
+
+    l = (length(dict)-1) >> 1
+    pts = range(a, b, n+2)[2:end-1]
+    converged, w, x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], w0, x0, pts; verbose)
+    if converged
+        Fvals = [Fk(w[:,i],x[:,i],dict[2*l+1], moments[2*l+1]) for i in 1:size(w,2)]
+        if (first(Fvals)*last(Fvals) < 0)
+            if first(Fvals) > 0
+                I = findlast(Fvals .> 0)
+            else
+                I = findlast(Fvals .< 0)
+            end
+            pts[I], pts[I+1], w[:,I], x[:,I], w[:,I+1], x[:,I+1]
+        else
+            if first(Fvals) > 0
+                if first(Fvals) > last(Fvals)
+                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                else
+                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                end
+            else
+                if first(Fvals) > last(Fvals)
+                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                else
+                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                end
+            end
+            verbose && println("Upper canonical: refining from $((a,b)) to $((a_new,b_new))")
+            estimate_canonical_representation_upper(dict, moments, a_new, b_new, w0_new, x0_new, n; verbose)
+        end
+    else
+        verbose && println("Upper canonical: increasing n to $(2n)")
+        estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, 2n; verbose)
+    end
 end
 
 function compute_principal_representation_upper(dict, moments, w0, x0)
-    rule = UpperPrincipalEven(dict, moments)
+    @assert isodd(length(dict))
+    @assert length(moments) == length(dict)
+    @assert length(w0) == (length(dict)>>1)+1
 
+    rule = UpperPrincipalEven(dict, moments)
     x_init = quad_to_newton(rule, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
-    r = nlsolve(F!, J!, x_init)
-    @assert converged(r)
-    w, x = newton_to_quad(rule, r.zero)
-
-    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-    #     threshold = default_threshold(dict), verbose = false)
-    # w, x = newton_to_quad(rule, nx)
+    try
+        r = nlsolve(F!, J!, x_init)
+        w, x = newton_to_quad(rule, r.zero)
+        converged(r), w, x
+    catch e
+        println("ERROR THROWN at $(xi) in computation of upper principal")
+        @show e
+        false, w0, x0
+    end
 end
 
 function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
@@ -123,80 +167,108 @@ function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
     @assert length(w0) == (length(dict)+1)>>1
 
     rule = CanonicalRepresentationEven_J1(dict, xi, moments)
-
     x_init = quad_to_newton(rule, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
-    r = nlsolve(F!, J!, x_init)
-    @assert converged(r)
-    w, x = newton_to_quad(rule, r.zero)
-
-    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-    #     threshold = default_threshold(dict), verbose = false, maxstep = 10)
-    # w, x = newton_to_quad(rule, nx)
+    try
+        r = nlsolve(F!, J!, x_init)
+        w, x = newton_to_quad(rule, r.zero)
+        converged(r), w, x
+    catch e
+        println("ERROR THROWN at $(xi) in computation of lower canonical")
+        @show e
+        false, w0, x0
+    end
 end
 
-function compute_many_canonical_representation_lower(dict, moments, gw, gx, n,
-    pts = linspace(supportleft(dict), gx[1], n))
+function compute_many_canonical_representation_lower(dict, moments, w0, x0, pts; verbose=false)
+    local converged
 
     l = (length(dict)+1) >> 1
-    T = eltype(gw)
+    n = length(pts)
+    T = eltype(w0)
     w = zeros(T,l,n)
     x = zeros(T,l,n)
-    w[:,n] = gw
-    x[:,n] = gx
     for i = n:-1:1
         xi = pts[i]
-        if i == n
-            w0 = gw
-            x0 = gx
-        else
+        if i < n
             w0 = w[:,i+1]
             x0 = x[:,i+1]
         end
-        w1,x1 = compute_canonical_representation_lower(dict, moments, xi, w0, x0)
+        converged, w1, x1 = compute_canonical_representation_lower(dict, moments, xi, w0, x0)
+        if !converged
+            verbose && println("Many lower canonical: not converged for $(xi)")
+            break
+        end
         w[:,i] = w1
         x[:,i] = x1
     end
-    w,x
+    converged, w, x
 end
 
-function approximate_canonical_representation_lower(dict, moments, gw, gx, n)
+function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0; verbose = false)
     @assert iseven(length(dict))
     @assert length(dict) == length(moments)
     l = length(dict) >> 1
-    @assert length(gw) == l
-    @assert length(gx) == l
+    @assert length(w0) == l
+    @assert length(x0) == l
 
-    a = supportleft(dict)
-    b = gx[1]
-    # a1 = 9a/10+b/10
-    # basis = ChebyshevT(n) → a1..b
-    basis = ChebyshevT(n) → a..b
-    # basis = ChebyshevT(n) → supportleft(dict)..gx[1]
-    pts = interpolation_grid(basis)
-    w,x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], gw, gx, n, pts)
-    T = eltype(w)
-    Fvals = T[Fk(w[:,i],x[:,i],dict[2*l], moments[2*l]) for i in 1:size(w,2)]
-    F_fun = chebyshev_approximation(basis, Fvals)
-    w_funs = [chebyshev_approximation(basis, w[i,:]') for i in 1:size(w,1)]
-    x_funs = [chebyshev_approximation(basis, x[i,:]') for i in 1:size(x,1)]
-    F_fun, w_funs, x_funs
+    verbose && println("Estimating lower canonical representation near $(b)")
+    n = 8
+    estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n; verbose)
+end
+
+function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n; verbose=false)
+    @assert n <= 1024
+    l = length(dict) >> 1
+    pts = range(a, b, n+2)[2:end-1]
+    converged, w, x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], w0, x0, pts; verbose)
+    if converged
+        Fvals = [Fk(w[:,i],x[:,i],dict[2*l], moments[2*l]) for i in 1:size(w,2)]
+        if (first(Fvals)*last(Fvals) < 0)
+            if first(Fvals) > 0
+                I = findlast(Fvals .> 0)
+            else
+                I = findlast(Fvals .< 0)
+            end
+            pts[I], pts[I+1], w[:,I], x[:,I], w[:,I+1], x[:,I+1]
+        else
+            if first(Fvals) > 0
+                if first(Fvals) > last(Fvals)
+                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                else
+                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                end
+            else
+                if first(Fvals) > last(Fvals)
+                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                else
+                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                end
+            end
+            verbose && println("Lower canonical: refining from $((a,b)) to $((a_new,b_new))")
+            estimate_canonical_representation_lower(dict, moments, a_new, b_new, w0_new, x0_new, n; verbose)
+        end
+    else
+        verbose && println("Lower canonical: increasing n to $(2n)")
+        estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, 2n; verbose)
+    end
 end
 
 function compute_principal_representation_lower(dict, moments, w0, x0)
     rule = LowerPrincipalOdd(dict, moments)
-
     x_init = quad_to_newton(rule, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
-    r = nlsolve(F!, J!, x_init)
-    @assert converged(r)
-    w, x = newton_to_quad(rule, r.zero)
-
-    # nx, iter, normx = newton_with_restart(rule, quad_to_newton(rule, w0, x0),
-    #     threshold = default_threshold(dict), verbose = false)
-    # w, x = newton_to_quad(rule, nx)
+    try
+        r = nlsolve(F!, J!, x_init)
+        w, x = newton_to_quad(rule, r.zero)
+        converged(r), w, x
+    catch e
+        println("ERROR THROWN at $(xi) in computation of lower principal")
+        @show e
+        false, w0, x0
+    end
 end
 
 
@@ -205,23 +277,17 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
 
     n = length(dict)
     l = n >> 1
-
     T = codomaintype(dict)
 
     xk_upper = fill(T[],0)
     wk_upper = fill(T[],0)
     xk_lower = fill(T[],0)
     wk_lower = fill(T[],0)
-    f_funs_upper = Array{Any}(undef,0)
-    w_funs_upper = Array{Any}(undef,0)
-    x_funs_upper = Array{Any}(undef,0)
-    f_funs_lower = Array{Any}(undef,0)
-    w_funs_lower = Array{Any}(undef,0)
-    x_funs_lower = Array{Any}(undef,0)
 
     verbose && println("Computing initial one point rule")
     wk,xk = compute_one_point_rule(dict[1:2], moments[1:2]; verbose)
     verbose && println("One point quadrature rule is: ", xk, ", ", wk)
+
     xi_lower = zeros(T,l)
     xi_upper = zeros(T,l-1)
     xi_lower[1] = xk[1]
@@ -230,17 +296,17 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
     push!(xk_lower, xk)
 
     if l == 1
-        return wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
+        return wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper
     end
 
-    bn = 32
     for k = 1:l-1
-        f_fun, w_funs, x_funs = approximate_canonical_representation_upper(
-            dict[1:2*k+1], moments[1:2*k+1], wk, xk, bn)
-        xi0 = bisection(f_fun, supportleft(f_fun), supportright(f_fun); threshold = default_threshold(T))
-        w0 = T[w_funs[k](xi0) for k in 1:length(x_funs)]
-        x0 = T[x_funs[k](xi0) for k in 1:length(x_funs)]
-        wk, xk = compute_principal_representation_upper(dict[1:2*k+1], moments[1:2*k+1], w0, x0)
+        w0 = [wk; zero(T)]
+        x0 = [xk; supportright(dict)]
+        a = supportleft(dict)
+        b = xk[1]
+        p1, p2, w1, x1, w2, x2 =
+            estimate_canonical_representation_upper(dict[1:2*k+1], moments[1:2*k+1], a, b, w0, x0; verbose)
+        converged, wk, xk = compute_principal_representation_upper(dict[1:2*k+1], moments[1:2*k+1], w2, x2)
         xi = xk[1]
         xi_upper[k] = xi
         verbose && println("Upper principal representation ", k, " : xi is ", xi)
@@ -248,41 +314,26 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
         # Store the results for posterity
         push!(wk_upper, wk)
         push!(xk_upper, xk)
-        push!(f_funs_upper, f_fun)
-        push!(w_funs_upper, w_funs)
-        push!(x_funs_upper, x_funs)
 
-        f_fun, w_funs, x_funs = approximate_canonical_representation_lower(
-            dict[1:2*k+2], moments[1:2*k+2], wk, xk, bn)
-        xi0 = bisection(f_fun, supportleft(f_fun), supportright(f_fun); threshold = default_threshold(T))
-        w0 = T[w_funs[k](xi0) for k in 1:length(w_funs)]
-        x0 = T[x_funs[k](xi0) for k in 1:length(x_funs)]
-        wk, xk = compute_principal_representation_lower(dict[1:2*k+2], moments[1:2*k+2], w0, x0)
+        w0 = wk
+        x0 = xk
+        a = supportleft(dict)
+        b = xk[1]
+        p1, p2, w1, x1, w2, x2 =
+            estimate_canonical_representation_lower(dict[1:2*k+2], moments[1:2*k+2], a, b, w0, x0; verbose)
+        converged, wk, xk = compute_principal_representation_lower(dict[1:2*k+2], moments[1:2*k+2], w2, x2)
         xi = xk[1]
         xi_lower[k+1] = xi
-        if verbose
-            println("Lower principal representation ", k+1, " : xi is ", xi)
-        end
+        verbose && println("Lower principal representation ", k+1, " : xi is ", xi)
 
         push!(wk_lower, wk)
         push!(xk_lower, xk)
-        push!(f_funs_lower, f_fun)
-        push!(w_funs_lower, w_funs)
-        push!(x_funs_lower, x_funs)
-
-        residual = abs(sum([wk[i]*dict[2*k+2](xk[i]) for i=1:length(wk)]) - moments[2*k+2])
-        # verbose && @show residual
-
-        if f_fun.coefficients[end] > 1e-10
-            bn *= 2
-            verbose && println("Increasing bn parameter to $(bn)")
-        end
     end
-    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper
+    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper
 end
 
 function compute_gauss_rule(dict::Dictionary, moments = compute_moments(dict); options...)
-    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper, f_funs_lower, f_funs_upper, w_funs_lower, w_funs_upper, x_funs_lower, x_funs_upper =
+    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper =
         compute_gauss_rules(dict, moments; options...)
     wk, xk
 end
