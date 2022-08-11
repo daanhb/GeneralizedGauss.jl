@@ -2,18 +2,7 @@
 Fk(w, x, u2k, c2k) = apply_quad(w, x, u2k) - c2k
 Gk(w, x, u2kp1, c2kp1) = apply_quad(w, x, u2kp1) - c2kp1
 
-function leastsquares_approximate(dict::Dictionary, points, values)
-    @assert length(points) == length(values)
-
-    M = length(points)
-    N = min(length(values), max(6,round(Int, sqrt(M))))
-    basis = rescale(resize(dict, N), minimum(points), maximum(points))
-    A = BasisFunctions.evaluation_matrix(basis, points)
-    Expansion(basis, A\values)
-end
-
 default_threshold(dict::Dictionary) = default_threshold(codomaintype(dict))
-
 default_threshold(::Type{T}) where {T <: AbstractFloat} = sqrt(eps(T))/100
 default_threshold(::Type{BigFloat}) = big(1e-20)
 
@@ -79,11 +68,6 @@ function compute_many_canonical_representation_upper(dict, moments, w0, x0, pts;
     converged, w, x
 end
 
-function chebyshev_approximation(basis, vals)
-    A = approximation(basis)
-    Expansion(basis, A*vals)
-end
-
 function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0; verbose=false)
     @assert isodd(length(dict))
     @assert length(dict) == length(moments)
@@ -103,14 +87,21 @@ function interpolate_starting_values(a, b, p, w_left, x_left, w_right, x_right)
     w0, x0
 end
 
-function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, n; verbose=false)
+function estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, n, wa=nothing, xa=nothing; verbose=false)
     @assert n <= 1024
 
     l = (length(dict)-1) >> 1
     pts = range(a, b, n+2)[2:end-1]
+    if !(wa == nothing)
+        w0, x0 = interpolate_starting_values(a, b, pts[end], wa, xa, wb, xb)
+    else
+        w0, x0 = wb, xb
+    end
+
     converged, w, x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], w0, x0, pts; verbose)
     if converged
         Fvals = [Fk(w[:,i],x[:,i],dict[2*l+1], moments[2*l+1]) for i in 1:size(w,2)]
+        ismonotonic(Fvals) || error("Upper canonical: function F is not monotonic but should be. Aborting.")
         if (first(Fvals)*last(Fvals) < 0)
             if first(Fvals) > 0
                 I = findlast(Fvals .> 0)
@@ -121,23 +112,31 @@ function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, n;
         else
             if first(Fvals) > 0
                 if first(Fvals) > last(Fvals)
-                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                    a_new = pts[end]; b_new = b;
+                    wa_new = w[:,end]; xa_new = x[:,end];
+                    wb_new = w0; xb_new = x0;
                 else
-                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                    a_new = a; b_new = pts[1];
+                    wb_new = w[:,1]; xb_new = x[:,1];
+                    wa_new = nothing; xa_new = nothing;
                 end
             else
                 if first(Fvals) > last(Fvals)
-                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                    a_new = a; b_new = pts[1];
+                    wb_new = w[:,1]; xb_new = x[:,1];
+                    wa_new = nothing; xa_new = nothing;
                 else
-                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                    a_new = pts[end]; b_new = b;
+                    wa_new = w[:,end]; xa_new = x[:,end];
+                    wb_new = w0; xb_new = x0;
                 end
             end
             verbose && println("Upper canonical: refining from $((a,b)) to $((a_new,b_new))")
-            estimate_canonical_representation_upper(dict, moments, a_new, b_new, w0_new, x0_new, n; verbose)
+            estimate_canonical_representation_upper(dict, moments, a_new, b_new, wb_new, xb_new, n, wa_new, xa_new; verbose)
         end
     else
         verbose && println("Upper canonical: increasing n to $(2n)")
-        estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, 2n; verbose)
+        estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, 2n; verbose)
     end
 end
 
@@ -155,7 +154,7 @@ function compute_principal_representation_upper(dict, moments, w0, x0)
         w, x = newton_to_quad(rule, r.zero)
         converged(r), w, x
     catch e
-        println("ERROR THROWN at $(xi) in computation of upper principal")
+        println("ERROR THROWN in computation of upper principal")
         @show e
         false, w0, x0
     end
@@ -173,6 +172,7 @@ function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
     try
         r = nlsolve(F!, J!, x_init)
         w, x = newton_to_quad(rule, r.zero)
+        c = converged(r)
         converged(r), w, x
     catch e
         println("ERROR THROWN at $(xi) in computation of lower canonical")
@@ -218,13 +218,31 @@ function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0; ve
     estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n; verbose)
 end
 
-function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n; verbose=false)
+function ismonotonic(values)
+    if length(values) <= 1
+        return true
+    end
+    if first(values) > last(values)
+        reduce(&, values[1:end-1] .> values[2:end])
+    else
+        reduce(&, values[1:end-1] .< values[2:end])
+    end
+end
+
+function estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, n, wa=nothing, xa=nothing; verbose=false)
     @assert n <= 1024
     l = length(dict) >> 1
     pts = range(a, b, n+2)[2:end-1]
+    if !(wa==nothing)
+        w0, x0 = interpolate_starting_values(a, b, pts[end], wa, xa, wb, xb)
+    else
+        w0 = wb
+        x0 = xb
+    end
     converged, w, x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], w0, x0, pts; verbose)
     if converged
         Fvals = [Fk(w[:,i],x[:,i],dict[2*l], moments[2*l]) for i in 1:size(w,2)]
+        ismonotonic(Fvals) || error("Lower canonical: function F is not monotonic but should be. Aborting.")
         if (first(Fvals)*last(Fvals) < 0)
             if first(Fvals) > 0
                 I = findlast(Fvals .> 0)
@@ -235,23 +253,31 @@ function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n;
         else
             if first(Fvals) > 0
                 if first(Fvals) > last(Fvals)
-                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                    a_new = pts[end]; b_new = b;
+                    wa_new = w[:,end]; xa_new = x[:,end];
+                    wb_new = wb; xb_new = xb;
                 else
-                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                    a_new = a; b_new = pts[1];
+                    wb_new = w[:,1]; xb_new = x[:,1];
+                    wa_new = nothing; xa_new = nothing;
                 end
             else
                 if first(Fvals) > last(Fvals)
-                    w0_new = w[:,1]; x0_new = x[:,1]; a_new = a; b_new = pts[1];
+                    a_new = a; b_new = pts[1];
+                    wb_new = w[:,1]; xb_new = x[:,1];
+                    wa_new = nothing; xa_new = nothing;
                 else
-                    w0_new = w[:,end]; x0_new = x[:,end]; a_new = pts[end]; b_new = b;
+                    a_new = pts[end]; b_new = b;
+                    wa_new = w[:,end]; xa_new = x[:,end];
+                    wb_new = wb; xb_new = xb;
                 end
             end
             verbose && println("Lower canonical: refining from $((a,b)) to $((a_new,b_new))")
-            estimate_canonical_representation_lower(dict, moments, a_new, b_new, w0_new, x0_new, n; verbose)
+            estimate_canonical_representation_lower(dict, moments, a_new, b_new, wb_new, xb_new, n, wa_new, xa_new; verbose)
         end
     else
         verbose && println("Lower canonical: increasing n to $(2n)")
-        estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, 2n; verbose)
+        estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, 2n, wa, xa; verbose)
     end
 end
 
@@ -265,7 +291,7 @@ function compute_principal_representation_lower(dict, moments, w0, x0)
         w, x = newton_to_quad(rule, r.zero)
         converged(r), w, x
     catch e
-        println("ERROR THROWN at $(xi) in computation of lower principal")
+        println("ERROR THROWN in computation of lower principal")
         @show e
         false, w0, x0
     end

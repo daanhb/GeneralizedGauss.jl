@@ -2,6 +2,8 @@
 compute_moments(basis::Dictionary) = [moment(basis,i) for i in eachindex(basis)]
 
 apply_quad(w, x, f) = sum(w[k]*f(x[k]) for k in 1:length(w))
+apply_quad(w, x, f::BasisFunction) =
+    sum(w[k]*BasisFunctions.unsafe_eval_element(f, x[k]) for k in 1:length(w))
 
 compute_weights(x, basis, B) = interpolation_matrix(basis, x)' \ B
 
