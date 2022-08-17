@@ -6,23 +6,30 @@ default_threshold(dict::Dictionary) = default_threshold(codomaintype(dict))
 default_threshold(::Type{T}) where {T <: AbstractFloat} = sqrt(eps(T))/100
 default_threshold(::Type{BigFloat}) = big(1e-20)
 
+function call_solver(F!, J!, x_init; options...)
+    nlsolve(F!, J!, x_init; options...)
+end
 
-supportleft(dict) = leftendpoint(support(dict))
+function supportleft(dict)
+    t = leftendpoint(support(dict))
+    isinf(t) ? -one(t)*10 : t
+end
 supportright(dict) = rightendpoint(support(dict))
 
-function compute_one_point_rule(dict, moments; verbose = false)
+function compute_one_point_rule(dict, moments; options...)
     @assert length(dict) == 2
     @assert length(moments) == 2
 
     x0 = 1/2 * (supportleft(dict) + supportright(dict))
     w0 = moments[1] / eval_element(dict, 1, x0)
-    converged, w, x = compute_principal_representation_lower(dict, moments, w0, x0)
+    converged, w, x = compute_principal_representation_lower(dict, moments, w0, x0; options...)
     @assert converged
     w, x
 end
 
 
-function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
+function compute_canonical_representation_upper(dict, moments, xi, w0, x0;
+        verbose=false, options...)
     @assert iseven(length(dict))
     @assert length(moments) == length(dict)
     @assert length(w0) == (length(dict)>>1)+1
@@ -32,8 +39,12 @@ function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
     try
-        r = nlsolve(F!, J!, x_init)
+        r = call_solver(F!, J!, x_init; options...)
         w, x = newton_to_quad(rule, r.zero)
+        conv = converged(r)
+        if !conv && verbose
+            @show r
+        end
         converged(r), w, x
     catch e
         println("ERROR THROWN at $(xi) in computation of upper canonical")
@@ -43,7 +54,8 @@ function compute_canonical_representation_upper(dict, moments, xi, w0, x0)
 end
 
 
-function compute_many_canonical_representation_upper(dict, moments, w0, x0, pts; verbose=false)
+function compute_many_canonical_representation_upper(dict, moments, w0, x0, pts;
+        verbose=false, options...)
     local converged
 
     l = length(dict) >> 1
@@ -57,9 +69,9 @@ function compute_many_canonical_representation_upper(dict, moments, w0, x0, pts;
             w0 = w[:,i+1]
             x0 = x[:,i+1]
         end
-        converged, w1, x1 = compute_canonical_representation_upper(dict, moments, xi, w0, x0)
-        if !converged
-            verbose && println("Many upper canonical: not converged for $(xi)")
+        converged, w1, x1 = compute_canonical_representation_upper(dict, moments, xi, w0, x0; verbose, options...)
+        if !converged && verbose
+            println("Many upper canonical: not converged for $(xi)")
             break
         end
         w[:,i] = w1
@@ -68,7 +80,8 @@ function compute_many_canonical_representation_upper(dict, moments, w0, x0, pts;
     converged, w, x
 end
 
-function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0; verbose=false)
+function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0;
+        verbose=false, options...)
     @assert isodd(length(dict))
     @assert length(dict) == length(moments)
     l = (length(dict)-1) >> 1
@@ -77,7 +90,8 @@ function estimate_canonical_representation_upper(dict, moments, a, b, w0, x0; ve
 
     verbose && println("Estimating upper canonical representation near $(b)")
     n = 8
-    estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, n; verbose)
+    estimate_canonical_representation_upper(dict, moments, a, b, w0, x0, n;
+        verbose, options...)
 end
 
 function interpolate_starting_values(a, b, p, w_left, x_left, w_right, x_right)
@@ -87,7 +101,8 @@ function interpolate_starting_values(a, b, p, w_left, x_left, w_right, x_right)
     w0, x0
 end
 
-function estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, n, wa=nothing, xa=nothing; verbose=false)
+function estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, n, wa=nothing, xa=nothing;
+        verbose=false, options...)
     @assert n <= 1024
 
     l = (length(dict)-1) >> 1
@@ -98,7 +113,7 @@ function estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, n,
         w0, x0 = wb, xb
     end
 
-    converged, w, x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], w0, x0, pts; verbose)
+    converged, w, x = compute_many_canonical_representation_upper(dict[1:2*l], moments[1:2*l], w0, x0, pts; verbose, options...)
     if converged
         Fvals = [Fk(w[:,i],x[:,i],dict[2*l+1], moments[2*l+1]) for i in 1:size(w,2)]
         ismonotonic(Fvals) || error("Upper canonical: function F is not monotonic but should be. Aborting.")
@@ -132,15 +147,16 @@ function estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, n,
                 end
             end
             verbose && println("Upper canonical: refining from $((a,b)) to $((a_new,b_new))")
-            estimate_canonical_representation_upper(dict, moments, a_new, b_new, wb_new, xb_new, n, wa_new, xa_new; verbose)
+            estimate_canonical_representation_upper(dict, moments, a_new, b_new, wb_new, xb_new, n, wa_new, xa_new; verbose, options...)
         end
     else
         verbose && println("Upper canonical: increasing n to $(2n)")
-        estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, 2n; verbose)
+        estimate_canonical_representation_upper(dict, moments, a, b, wb, xb, 2n; verbose, options...)
     end
 end
 
-function compute_principal_representation_upper(dict, moments, w0, x0)
+function compute_principal_representation_upper(dict, moments, w0, x0;
+        verbose=false, options...)
     @assert isodd(length(dict))
     @assert length(moments) == length(dict)
     @assert length(w0) == (length(dict)>>1)+1
@@ -150,7 +166,7 @@ function compute_principal_representation_upper(dict, moments, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
     try
-        r = nlsolve(F!, J!, x_init)
+        r = call_solver(F!, J!, x_init; options...)
         w, x = newton_to_quad(rule, r.zero)
         converged(r), w, x
     catch e
@@ -160,7 +176,8 @@ function compute_principal_representation_upper(dict, moments, w0, x0)
     end
 end
 
-function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
+function compute_canonical_representation_lower(dict, moments, xi, w0, x0;
+        verbose=false, options...)
     @assert isodd(length(dict))
     @assert length(moments) == length(dict)
     @assert length(w0) == (length(dict)+1)>>1
@@ -170,9 +187,12 @@ function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
     try
-        r = nlsolve(F!, J!, x_init)
+        r = call_solver(F!, J!, x_init; options...)
         w, x = newton_to_quad(rule, r.zero)
-        c = converged(r)
+        conv = converged(r)
+        if !conv && verbose
+            @show r
+        end
         converged(r), w, x
     catch e
         println("ERROR THROWN at $(xi) in computation of lower canonical")
@@ -181,7 +201,8 @@ function compute_canonical_representation_lower(dict, moments, xi, w0, x0)
     end
 end
 
-function compute_many_canonical_representation_lower(dict, moments, w0, x0, pts; verbose=false)
+function compute_many_canonical_representation_lower(dict, moments, w0, x0, pts;
+        verbose=false, options...)
     local converged
 
     l = (length(dict)+1) >> 1
@@ -195,9 +216,11 @@ function compute_many_canonical_representation_lower(dict, moments, w0, x0, pts;
             w0 = w[:,i+1]
             x0 = x[:,i+1]
         end
-        converged, w1, x1 = compute_canonical_representation_lower(dict, moments, xi, w0, x0)
-        if !converged
-            verbose && println("Many lower canonical: not converged for $(xi)")
+        converged, w1, x1 =
+            compute_canonical_representation_lower(dict, moments, xi, w0, x0;
+                verbose, options...)
+        if !converged && verbose
+            println("Many lower canonical: not converged for $(xi)")
             break
         end
         w[:,i] = w1
@@ -206,7 +229,8 @@ function compute_many_canonical_representation_lower(dict, moments, w0, x0, pts;
     converged, w, x
 end
 
-function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0; verbose = false)
+function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0;
+        verbose = false, options...)
     @assert iseven(length(dict))
     @assert length(dict) == length(moments)
     l = length(dict) >> 1
@@ -215,7 +239,7 @@ function estimate_canonical_representation_lower(dict, moments, a, b, w0, x0; ve
 
     verbose && println("Estimating lower canonical representation near $(b)")
     n = 8
-    estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n; verbose)
+    estimate_canonical_representation_lower(dict, moments, a, b, w0, x0, n; verbose, options...)
 end
 
 function ismonotonic(values)
@@ -229,7 +253,8 @@ function ismonotonic(values)
     end
 end
 
-function estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, n, wa=nothing, xa=nothing; verbose=false)
+function estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, n, wa=nothing, xa=nothing;
+        verbose=false, options...)
     @assert n <= 1024
     l = length(dict) >> 1
     pts = range(a, b, n+2)[2:end-1]
@@ -239,7 +264,7 @@ function estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, n,
         w0 = wb
         x0 = xb
     end
-    converged, w, x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], w0, x0, pts; verbose)
+    converged, w, x = compute_many_canonical_representation_lower(dict[1:2*l-1], moments[1:2*l-1], w0, x0, pts; verbose, options...)
     if converged
         Fvals = [Fk(w[:,i],x[:,i],dict[2*l], moments[2*l]) for i in 1:size(w,2)]
         ismonotonic(Fvals) || error("Lower canonical: function F is not monotonic but should be. Aborting.")
@@ -273,21 +298,23 @@ function estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, n,
                 end
             end
             verbose && println("Lower canonical: refining from $((a,b)) to $((a_new,b_new))")
-            estimate_canonical_representation_lower(dict, moments, a_new, b_new, wb_new, xb_new, n, wa_new, xa_new; verbose)
+            estimate_canonical_representation_lower(dict, moments, a_new, b_new, wb_new, xb_new, n, wa_new, xa_new; verbose, options...)
         end
     else
         verbose && println("Lower canonical: increasing n to $(2n)")
-        estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, 2n, wa, xa; verbose)
+        estimate_canonical_representation_lower(dict, moments, a, b, wb, xb, 2n, wa, xa; verbose, options...)
     end
 end
 
-function compute_principal_representation_lower(dict, moments, w0, x0)
+function compute_principal_representation_lower(dict, moments, w0, x0;
+        verbose=false, options...)
     rule = LowerPrincipalOdd(dict, moments)
     x_init = quad_to_newton(rule, w0, x0)
     F!(Fx, x) = residual!(Fx, rule, x)
     J!(Jx, x) = jacobian!(Jx, rule, x)
+    J = jacobian(rule, x_init)
     try
-        r = nlsolve(F!, J!, x_init)
+        r = call_solver(F!, J!, x_init; options...)
         w, x = newton_to_quad(rule, r.zero)
         converged(r), w, x
     catch e
@@ -298,7 +325,8 @@ function compute_principal_representation_lower(dict, moments, w0, x0)
 end
 
 
-function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); verbose = false)
+function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict);
+        verbose = false, options...)
     @assert iseven(length(dict))
 
     n = length(dict)
@@ -311,7 +339,7 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
     wk_lower = fill(T[],0)
 
     verbose && println("Computing initial one point rule")
-    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2]; verbose)
+    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2]; verbose, options...)
     verbose && println("One point quadrature rule is: ", xk, ", ", wk)
 
     xi_lower = zeros(T,l)
@@ -331,8 +359,8 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
         a = supportleft(dict)
         b = xk[1]
         p1, p2, w1, x1, w2, x2 =
-            estimate_canonical_representation_upper(dict[1:2*k+1], moments[1:2*k+1], a, b, w0, x0; verbose)
-        converged, wk, xk = compute_principal_representation_upper(dict[1:2*k+1], moments[1:2*k+1], w2, x2)
+            estimate_canonical_representation_upper(dict[1:2*k+1], moments[1:2*k+1], a, b, w0, x0; verbose, options...)
+        converged, wk, xk = compute_principal_representation_upper(dict[1:2*k+1], moments[1:2*k+1], w2, x2; verbose, options...)
         xi = xk[1]
         xi_upper[k] = xi
         verbose && println("Upper principal representation ", k, " : xi is ", xi)
@@ -346,8 +374,8 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict); 
         a = supportleft(dict)
         b = xk[1]
         p1, p2, w1, x1, w2, x2 =
-            estimate_canonical_representation_lower(dict[1:2*k+2], moments[1:2*k+2], a, b, w0, x0; verbose)
-        converged, wk, xk = compute_principal_representation_lower(dict[1:2*k+2], moments[1:2*k+2], w2, x2)
+            estimate_canonical_representation_lower(dict[1:2*k+2], moments[1:2*k+2], a, b, w0, x0; verbose, options...)
+        converged, wk, xk = compute_principal_representation_lower(dict[1:2*k+2], moments[1:2*k+2], w2, x2; verbose, options...)
         xi = xk[1]
         xi_lower[k+1] = xi
         verbose && println("Lower principal representation ", k+1, " : xi is ", xi)

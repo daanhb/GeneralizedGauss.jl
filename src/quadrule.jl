@@ -41,12 +41,12 @@ equations in n variables.
 abstract type NonlinearSystem end
 
 function residual(sys::NonlinearSystem, x)
-    result = Array{eltype(sys)}(length(sys))
+    result = zeros(eltype(sys), length(sys))
     residual!(result, sys, x)
 end
 
 function jacobian(sys::NonlinearSystem, x)
-    J = Array{eltype(sys)}(size(sys))
+    J = zeros(eltype(sys), size(sys))
     jacobian!(J, sys, x)
 end
 
