@@ -69,9 +69,22 @@ size(rule::QuadRuleSystem) = (length(rule), dofs(rule))
 quadlength(rule::QuadRuleSystem) = length(rule.data)
 
 
+function residual(sys::QuadRuleSystem, w, x)
+    newton_x = quad_to_newton(sys, w, x)
+    residual(sys, newton_x)
+end
+function jacobian(sys::QuadRuleSystem, w, x)
+    newton_x = quad_to_newton(sys, w, x)
+    jacobian(sys, newton_x)
+end
+
 # Evaluate the residual of the system of equations
 function residual!(result, sys::QuadRuleSystem, newton_x)
-    w,x = newton_to_quad(sys, newton_x)
+    # w,x = newton_to_quad(sys, newton_x)
+    # residual!(result, sys, w, x, basis(sys), moments(sys))
+    L = quadlength(sys)
+    w,x = sys.scratch_w[L], sys.scratch_x[L]
+    newton_to_quad!(sys, w, x, newton_x)
     residual!(result, sys, w, x, basis(sys), moments(sys))
 end
 
@@ -84,7 +97,11 @@ end
 
 # Evaluate the Jacobian of the system of equations
 function jacobian!(J, sys::QuadRuleSystem, newton_x)
-    w,x = newton_to_quad(sys, newton_x)
+    # w,x = newton_to_quad(sys, newton_x)
+    # jacobian!(J, sys, w, x, basis(sys))
+    L = quadlength(sys)
+    w,x = sys.scratch_w[L], sys.scratch_x[L]
+    newton_to_quad!(sys, w, x, newton_x)
     jacobian!(J, sys, w, x, basis(sys))
 end
 
@@ -105,8 +122,19 @@ end
 
 "System of equations for a quadrature rule where all points are free."
 struct QuadRuleFreePoints{B,T} <: QuadRuleSystem{T}
-    data    ::  QuadRuleData{B,T}
+    data        ::  QuadRuleData{B,T}
+    scratch_x   ::  Vector{Vector{T}}
+    scratch_w   ::  Vector{Vector{T}}
+
+    function QuadRuleFreePoints{B,T}(data) where {B,T}
+        scratch_x = [zeros(T, k) for k in 1:length(data)]
+        scratch_w = [zeros(T, k) for k in 1:length(data)]
+        new(data, scratch_x, scratch_w)
+    end
 end
+
+QuadRuleFreePoints(data::QuadRuleData{B,T}) where {B,T} =
+    QuadRuleFreePoints{B,T}(data)
 
 "The total number of degrees of freedom in the system."
 dofs(rule::QuadRuleFreePoints) = 2*length(rule.data)
@@ -122,6 +150,10 @@ struct QuadRuleFixedPoints{B,T} <: QuadRuleSystem{T}
     fixed_pts   ::  Vector{T}
     "Indices of the free points."
     free_idxs   ::  Vector{Int}
+    "Scratch space for quadrature points."
+    scratch_x   ::  Vector{Vector{T}}
+    "Scratch space for quadrature weights."
+    scratch_w   ::  Vector{Vector{T}}
 
     function QuadRuleFixedPoints{B,T}(data, fixed_idxs, fixed_pts) where {B,T}
         P = length(fixed_idxs)
@@ -132,7 +164,12 @@ struct QuadRuleFixedPoints{B,T} <: QuadRuleSystem{T}
             @assert fixed_idxs[i] < fixed_idxs[i+1]
             @assert fixed_pts[i] < fixed_pts[i+1]
         end
-        new(data, fixed_idxs, fixed_pts, setdiff(1:length(data), fixed_idxs))
+        free_idxs = setdiff(1:length(data), fixed_idxs)
+
+        scratch_x = [zeros(T, k) for k in 1:length(data)]
+        scratch_w = [zeros(T, k) for k in 1:length(data)]
+
+        new(data, fixed_idxs, fixed_pts, free_idxs, scratch_x, scratch_w)
     end
 end
 
