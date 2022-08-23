@@ -341,63 +341,63 @@ function compute_gauss_rules(dict::Dictionary, moments = compute_moments(dict);
     l = n >> 1
     T = codomaintype(dict)
 
-    xk_upper = fill(T[],0)
-    wk_upper = fill(T[],0)
-    xk_lower = fill(T[],0)
-    wk_lower = fill(T[],0)
+    x_upper = fill(T[],0)
+    w_upper = fill(T[],0)
+    x_lower = fill(T[],0)
+    w_lower = fill(T[],0)
 
     verbose && println("Computing initial one point rule")
-    wk,xk = compute_one_point_rule(dict[1:2], moments[1:2]; verbose, options...)
-    verbose && println("One point quadrature rule is: ", xk, ", ", wk)
+    w,x = compute_one_point_rule(dict[1:2], moments[1:2]; verbose, options...)
+    verbose && println("One point quadrature rule is: ", x, ", ", w)
 
     xi_lower = zeros(T,l)
     xi_upper = zeros(T,l-1)
-    xi_lower[1] = xk[1]
+    xi_lower[1] = x[1]
 
-    push!(wk_lower, wk)
-    push!(xk_lower, xk)
+    push!(w_lower, w)
+    push!(x_lower, x)
 
     if l == 1
-        return wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper
+        return w, x, xi_upper, xi_lower, w_lower, w_upper, x_lower, x_upper
     end
 
     for k = 1:l-1
-        w0 = [wk; zero(T)]
-        x0 = [xk; supportright(dict)]
+        w0 = [w; zero(T)]
+        x0 = [x; supportright(dict)]
         a = supportleft(dict)
-        b = xk[1]
+        b = x[1]
         p1, p2, w1, x1, w2, x2 =
             estimate_upper_canonical_representation(dict[1:2*k+1], moments[1:2*k+1], a, b, w0, x0; verbose, options...)
-        converged, wk, xk = compute_upper_principal_representation(dict[1:2*k+1], moments[1:2*k+1], w2, x2; verbose, options...)
+        converged, w, x = compute_upper_principal_representation(dict[1:2*k+1], moments[1:2*k+1], w2, x2; verbose, options...)
         @assert converged
-        xi = xk[1]
+        xi = x[1]
         xi_upper[k] = xi
         verbose && println("Upper principal representation ", k, " : xi is ", xi)
 
         # Store the results for posterity
-        push!(wk_upper, wk)
-        push!(xk_upper, xk)
+        push!(w_upper, w)
+        push!(x_upper, x)
 
-        w0 = wk
-        x0 = xk
+        w0 = w
+        x0 = x
         a = supportleft(dict)
-        b = xk[1]
+        b = x[1]
         p1, p2, w1, x1, w2, x2 =
             estimate_lower_canonical_representation(dict[1:2*k+2], moments[1:2*k+2], a, b, w0, x0; verbose, options...)
-        converged, wk, xk = compute_lower_principal_representation(dict[1:2*k+2], moments[1:2*k+2], w2, x2; verbose, options...)
+        converged, w, x = compute_lower_principal_representation(dict[1:2*k+2], moments[1:2*k+2], w2, x2; verbose, options...)
         @assert converged
-        xi = xk[1]
+        xi = x[1]
         xi_lower[k+1] = xi
         verbose && println("Lower principal representation ", k+1, " : xi is ", xi)
 
-        push!(wk_lower, wk)
-        push!(xk_lower, xk)
+        push!(w_lower, w)
+        push!(x_lower, x)
     end
-    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper
+    w, x, xi_upper, xi_lower, w_lower, w_upper, x_lower, x_upper
 end
 
 function compute_gauss_rule(dict::Dictionary, moments = compute_moments(dict); options...)
-    wk, xk, xi_upper, xi_lower, wk_lower, wk_upper, xk_lower, xk_upper =
+    w, x, xi_upper, xi_lower, w_lower, w_upper, x_lower, x_upper =
         compute_gauss_rules(dict, moments; options...)
-    wk, xk
+    w, x
 end

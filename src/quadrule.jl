@@ -256,13 +256,13 @@ function jacobian!(J, sys::QuadRuleFreePoints, w, x, basis)
     # - First the derivatives with respect to the weight w[i]
     for j in 1:length(basis)
         for i in 1:l
-            J[j,i] = BasisFunctions.unsafe_eval_element(basis, j, x[i])
+            J[j,i] = funeval(basis, j, x[i])
         end
     end
     # - Then the weight times the derivatives of the basis functions
     for j in 1:length(basis)
         for i in 1:l
-            J[j,l+i] = w[i] * BasisFunctions.unsafe_eval_element_derivative(basis, j, x[i], 1)
+            J[j,l+i] = w[i] * funeval_deriv(basis, j, x[i])
         end
     end
     J
@@ -278,13 +278,13 @@ function jacobian!(J, sys::QuadRuleFixedPoints, w, x, basis)
     # - First the derivatives with respect to the weight w[i]: same as before
     for j in 1:length(basis)
         for i in 1:l
-            J[j,i] = BasisFunctions.unsafe_eval_element(basis, j, x[i])
+            J[j,i] = funeval(basis, j, x[i])
         end
     end
     # - Then the weight times the derivatives of the basis functions
     for j in 1:length(basis)
         for (k,i) in enumerate(sys.free_idxs)
-            J[j,l+k] = w[i] * BasisFunctions.unsafe_eval_element_derivative(basis, j, x[i], 1)
+            J[j,l+k] = w[i] * funeval_deriv(basis, j, x[i])
         end
     end
     J
